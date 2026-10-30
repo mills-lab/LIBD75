@@ -376,9 +376,11 @@ python assign_haplotype.py \
     ```
 
 
-### Data Analysis
+### Data Input
 
+We used GRCh38 (GenBank accession: GCA_000001405.15) as the primary reference in this project. The reference can be downloaded at https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/GCA_000001405.15_GRCh38/seqs_for_alignment_pipelines.ucsc_ids/. The CHM13-T2T reference (GenBank accession: GCA_009914755.4) used in the assembly assessment can be found at https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_009914755.1/.
 
+The filters we applied for indels can be found here: de-redundancy filters (https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.5/GRCh38@all), homopolymer (../LowComplexity/GRCh38_AllTandemRepeatsandHomopolymers_slop5.bed.gz), and low-confidence regions in chrX (/XY/GRCh38_chrX_XTR.bed.gz and ../XY/GRCh38_chrX_ampliconic.bed.gz)
 
 
 ### Citation
