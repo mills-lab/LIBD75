@@ -190,9 +190,18 @@ python assign_haplotype.py \
     ```
 
 
-    SV here
+    **DELLY2 version 1.2.6**
 
+    ```
+    singularity exec delly_v1.2.6.sif \
+        delly lr -y ont -g $REF ONT.WGS.Merge.RemoveSecond.sort.bam > delly.vcf
+    ```
 
+    **Sniffles2 version 2.4**
+  
+    ```
+    sniffles --input $bam_file --vcf OUTPUT.vcf --threads 4
+    ```
 
     **PALMER version 2.0.1**
 
@@ -304,8 +313,20 @@ python assign_haplotype.py \
     ```
 
 
-    SV here
+    **Manta version 1.6.0**
+    ```
+    configManta.py --bam LIBD75_Illumina_WGS.markedTrue.RG.phased.sorted.recal.localrealign.bam \
+        --referenceFasta $REF --runDir manta/illumina_wgs
+    manta/illumina_wgs/runWorkflow.py -j 12
 
+    # reformat inversions from breakends (Manta libexec helper)
+    convertInversion.py <samtools path> $REF manta/illumina_wgs/results/variants/diploidSV.vcf.gz
+    ```
+
+    **DELLY2 version 1.2.6**
+    ```
+    singularity exec delly_v1.2.6.sif delly call -g $REF LIBD75_Illumina_WGS.bam > delly.vcf
+    ```
 
     **xTea version 0.1.9**
     
@@ -333,7 +354,12 @@ python assign_haplotype.py \
 
     samtools mpileup -q 15 -d 90 -f GCA_000001405.15_GRCh38_no_alt_analysis_set.fa --positions $Potential_coordinates --output-extra MAPQ $bam_file
 
-    # And the output is processed by TODO 
+    Post-processing (`snv.ipynb`, cells 37, 40, 94):
+    1. Remove indel strings (`+n…`/`-n…`), read-start (`^` + MAPQ char), `$`, `#` and `/` from the bases column.
+    2. Drop bases from reads with MAPQ = 0, using the `--output-extra MAPQ` column.
+    3. Upper-case, then count bases equal to the panel ALT allele.
+    4. **A panel SNV is recovered in a pool if at least one read (MAPQ > 0, base quality ≥ 13 by samtools default, BAQ off) carries the panel ALT allele.**
+    5. Recall = recovered panel SNVs / panel SNVs, under each mask combination.
     ```
 
     **GARLIC**
@@ -354,7 +380,6 @@ python assign_haplotype.py \
 
     samtools mpileup -q 15 -d 90 -f GCA_000001405.15_GRCh38_no_alt_analysis_set.fa --positions $Potential_coordinates --output-extra MAPQ $bam_file
 
-    # And the output is processed by TODO
     ```
 
     **Ginkgo**
@@ -375,7 +400,40 @@ python assign_haplotype.py \
     java -jar ./MELTv2.2.2/MELT.jar Single -h GCA_000001405.15_GRCh38_no_alt_analysis_set.fa -bamfile $bam_file -n ./MELTv2.2.2/add_bed_files/Hg38/Hg38.genes.bed -t ./MELTv2.2.2/me_refs/Hg38/mei_list.txt -w $result_dire
     ```
 
+* Neurons pseudo-bulk samples
+  
+    ```bash
+    # (i) 115 MinION libraries (per-cell haplotagged BAMs)
+    samtools merge -o ontsc/sc_merge.bam  MALBAC/phased/{9033,9034,...,9227}.phased.bam   # 115 BAMs
+    # (ii) five PromethION-resequenced cells
+    samtools merge -o ontp2/P2_merge.bam  MALBAC/phased/{9100,9102,9103,9104,9107}.P2.phased.bam
+    # (iii) cell 9203 PromethION: used as is (MALBAC/phased/9203.P2.phased.bam)
+    # (iv) 94 NovaSeq libraries (duplicate-marked, not removed)
+    samtools merge -o illumina/illumina_merge.bam  MALBAC/alignments/{...}.markedTrue.sorted.bam  # 94 BAMs
+    samtools index <each merged bam>
+    ```
+    
+    **Pseudo-bulk SV**
+  
+    ```bash
+    singularity exec delly_v1.2.6.sif delly lr -y ont -g $REF <pool>.bam > delly.vcf
+    sniffles --input <pool>.bam --vcf OUTPUT.vcf --threads 4
+    singularity exec delly_v1.2.6.sif delly call -g $REF illumina_merge.bam > delly.vcf
+    ```
 
+    **Pseudo-bulk TE**
+
+    ```bash
+    # ONT pools: PALMER v2.0.1 per chromosome and TE type (LINE / ALU / SVA)
+    PALMER --input <pool>.bam --workdir <out>/<TYPE>/ --ref_ver GRCh38 --output <pool>_<chr>_<TYPE> \
+           --type <TYPE> --mode raw --chr <chr> --ref_fa $REF
+    # ONT pools sc_merge and P2_merge: xTea_long v0.1.0 (steps as in germlinemei/xtea_long/sc_merge/run_xTEA_pipeline.sh)
+    python l_main.py -C -b bam_list.txt -r $REF -p tmp/ -o candidate_list_from_clip.txt -n 16 -w 75
+    python l_main.py -A -b bam_list.txt -r $REF -p tmp/ -i candidate_list_from_clip.txt -o all_ins_seqs.fa --rep $REP_LIB -n 16
+    python l_main.py -N -b bam_list.txt -r $REF -p tmp/ghost -o ghost_reads.fa --rmsk null --cns consensus/LINE1.fa --min 4000 -n 16
+    python l_main.py -Y -i all_ins_seqs.fa -r $REF -p tmp/classification --rep $REP_LIB -y 15 -o classified_results.txt -n 16
+    # NovaSeq pool: xTea v0.1.9 and MELT v2.2.2 (single-cell settings from the existing "Neurons Illumina" section)
+    ```
 ### Data Input
 
 We used GRCh38 (GenBank accession: GCA_000001405.15) as the primary reference in this project. The reference can be downloaded at https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/GCA_000001405.15_GRCh38/seqs_for_alignment_pipelines.ucsc_ids/. The CHM13-T2T reference (GenBank accession: GCA_009914755.4) used in the assembly assessment can be found at https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_009914755.1/.
